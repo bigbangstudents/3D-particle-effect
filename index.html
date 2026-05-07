@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Cinematic Energy Sphere</title>
+
 <style>
     body {
         margin: 0;
@@ -35,10 +36,13 @@
     <div id="label-container"></div>
 </div>
 
-<!-- THREE CORE -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- ========================= -->
+<!-- THREE CORE (ONE CDN ONLY) -->
+<!-- ========================= -->
 
-<!-- REQUIRED SHADERS (FIX FOR YOUR ERROR) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+
+<!-- SHADERS -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
 
@@ -48,7 +52,10 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
+<!-- ========================= -->
 <!-- TF + TEACHABLE -->
+<!-- ========================= -->
+
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 
@@ -120,7 +127,7 @@ async function predict() {
 }
 
 // ==============================
-// THREE SCENE SETUP
+// THREE SCENE
 // ==============================
 
 let scene = new THREE.Scene();
@@ -154,7 +161,7 @@ const bloomPass = new THREE.UnrealBloomPass(
 composer.addPass(bloomPass);
 
 // ==============================
-// PARTICLE SYSTEM
+// PARTICLES
 // ==============================
 
 let particleCount = 4000;
