@@ -41,7 +41,10 @@
 
 <script>
 
-// ✅ NEW MODEL URL
+// ==============================
+// TEACHABLE MACHINE
+// ==============================
+
 const URL = "https://teachablemachine.withgoogle.com/models/MvoUOZfC_/";
 
 let model, webcam, labelContainer, maxPredictions;
@@ -140,7 +143,7 @@ let positions = new Float32Array(particleCount * 3);
 let originalPositions = [];
 let velocities = [];
 
-let state = "original";
+let state = "original"; // original | exploding | pulling
 
 function randomSpherePoint(r) {
     let u = Math.random();
@@ -155,6 +158,7 @@ function randomSpherePoint(r) {
     ];
 }
 
+// Generate sphere
 for (let i = 0; i < particleCount; i++) {
 
     let [x, y, z] = randomSpherePoint(radius);
@@ -204,14 +208,13 @@ function Explosion() {
             Math.random() * 0.4 + 0.15
         );
     }
-
-    setTimeout(() => {
-        state = "original";
-    }, 3000);
 }
 
 function Pull() {
-    state = "original";
+
+    if (state === "exploding" || state === "original") {
+        state = "pulling";
+    }
 }
 
 function Background() {
@@ -244,11 +247,46 @@ function animate() {
         }
     }
 
+    if (state === "pulling") {
+
+        let finished = true;
+
+        for (let i = 0; i < particleCount; i++) {
+
+            let targetX = originalPositions[i][0];
+            let targetY = originalPositions[i][1];
+            let targetZ = originalPositions[i][2];
+
+            let dx = targetX - posArray[i * 3];
+            let dy = targetY - posArray[i * 3 + 1];
+            let dz = targetZ - posArray[i * 3 + 2];
+
+            posArray[i * 3] += dx * 0.05;
+            posArray[i * 3 + 1] += dy * 0.05;
+            posArray[i * 3 + 2] += dz * 0.05;
+
+            if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01 || Math.abs(dz) > 0.01) {
+                finished = false;
+            }
+        }
+
+        if (finished) {
+            state = "original";
+        }
+    }
+
     geometry.attributes.position.needsUpdate = true;
     renderer.render(scene, camera);
 }
 
 animate();
+
+// Responsive
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
 
 </script>
 
