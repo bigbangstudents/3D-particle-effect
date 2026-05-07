@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Teachable Machine Particle Sphere</title>
+<style>
+    body {
+        margin: 0;
+        overflow: hidden;
+        background: black;
+        font-family: Arial, sans-serif;
+        color: white;
+    }
+    #ui {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+    }
+    button {
+        padding: 8px 12px;
+        margin: 4px;
+        cursor: pointer;
+    }
+    #label-container {
+        margin-top: 10px;
+    }
+</style>
+</head>
+<body>
+
+<div id="ui">
+    <h3>Teachable Machine Image Model</h3>
+    <button onclick="init()">Start Camera</button>
+    <button onclick="Explosion()">Explosion</button>
+    <button onclick="Pull()">Pull</button>
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<script>
+
+// ============================
+// TEACHABLE MACHINE
+// ============================
+
+const URL = "https://teachablemachine.withgoogle.com/models/PoD2MZmbC/";
+
+let model, webcam, labelContainer, maxPredictions;
+let lastTriggerTime = 0;
+let triggerCooldown = 2000; // 2 sec cooldown
+
+async function init() {
+    const modelURL = URL + "model.json";
+    const metadataURL = URL + "metadata.json";
+
+    model = await tmImage.load(modelURL, metadataURL);
+    maxPredictions = model.getTotalClasses();
+
+    const flip = true;
+    webcam = new tmImage.Webcam(200, 200, flip);
+    await webcam.setup();
+    await webcam.play();
+    window.requestAnimationFrame(loop);
+
+    document.getElementById("webcam-container").appendChild(webcam.canvas);
+    labelContainer = document.getElementById("label-container");
+
+    for (let i = 0; i < maxPredictions; i++) {
+        labelContainer.appendChild(document.createElement("div"));
+    }
+}
+
+async function loop() {
+    webcam.update();
+    await predict();
+    window.requestAnimationFrame(loop);
+}
+
+async function predict() {
+    const prediction = await model.predict(webcam.canvas);
+
+    let now = Date.now();
+
+    for (let i = 0; i < maxPredictions; i++) {
+        const className = prediction[i].className;
+        const probability = prediction[i].probability;
+
+        labelContainer.childNodes[i].innerHTML =
+            className + ": " + probability.toFixed(2);
+
+        if (probability > 0.95 && now - lastTriggerTime > triggerCooldown) {
+
+            if (className === "explosion") {
+                Explosion();
+                lastTriggerTime = now;
+            }
+
+            if (className === "gravity pull") {
+                Pull();
+                lastTriggerTime = now;
+            }
+        }
+    }
+}
+
+// ============================
+// THREE JS PARTICLE SPHERE
+// ============================
+
+let scene = new THREE.Scene();
+let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+let renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+camera.position.z = 6;
+
+let particleCount = 6000;
+let geometry = new THREE.BufferGeometry();
+let positions = new Float32Array(particleCount * 3);
+let originalPositions = [];
+let velocities = [];
+let spawnParticles = [];
+let radius = 2;
+
+let state = "original"; 
+// original | exploding | exploded | pulling
+
+function randomSpherePoint(r) {
+    let u = Math.random();
+    let v = Math.random();
+    let theta = 2 * Math.PI * u;
+    let phi = Math.acos(2 * v - 1);
+    return [
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.sin(phi) * Math.sin(theta),
+        r * Math.cos(phi)
+    ];
+}
+
+for (let i = 0; i < particleCount; i++) {
+    let [x,y,z] = randomSpherePoint(radius);
+    positions[i*3] = x;
+    positions[i*3+1] = y;
+    positions[i*3+2] = z;
+    originalPositions.push([x,y,z]);
+    velocities.push(new THREE.Vector3());
+}
+
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+let material = new THREE.PointsMaterial({
+    color: 0x00ffff,
+    size: 0.04,
+    blending: THREE.AdditiveBlending,
+    transparent: true
+});
+
+let points = new THREE.Points(geometry, material);
+scene.add(points);
+
+// ============================
+// FUNCTIONS
+// ============================
+
+function Explosion() {
+    if (state !== "original") return;
+
+    state = "exploding";
+
+    for (let i = 0; i < particleCount; i++) {
+        let dir = new THREE.Vector3(
+            positions[i*3],
+            positions[i*3+1],
+            positions[i*3+2]
+        ).normalize();
+
+        velocities[i] = dir.multiplyScalar(Math.random()*0.3 + 0.1);
+    }
+
+    setTimeout(() => {
+        state = "exploded";
+        velocities.forEach(v => v.set(0,0,0));
+    }, 3000);
+}
+
+function Pull() {
+
+    if (state === "exploded") {
+        state = "pulling";
+        return;
+    }
+
+    if (state === "original") {
+        // spawn particles that get absorbed
+        for (let i = 0; i < 300; i++) {
+            spawnParticles.push(new THREE.Vector3(
+                (Math.random()-0.5)*20,
+                (Math.random()-0.5)*20,
+                (Math.random()-0.5)*20
+            ));
+        }
+    }
+}
+
+// ============================
+// ANIMATION LOOP
+// ============================
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    let posArray = geometry.attributes.position.array;
+
+    if (state === "original") {
+        points.rotation.y += 0.004;
+        points.rotation.x += 0.002;
+    }
+
+    if (state === "exploding") {
+        for (let i = 0; i < particleCount; i++) {
+            posArray[i*3] += velocities[i].x;
+            posArray[i*3+1] += velocities[i].y;
+            posArray[i*3+2] += velocities[i].z;
+        }
+    }
+
+    if (state === "pulling") {
+        let done = true;
+
+        for (let i = 0; i < particleCount; i++) {
+            let target = new THREE.Vector3(...originalPositions[i]);
+            let current = new THREE.Vector3(
+                posArray[i*3],
+                posArray[i*3+1],
+                posArray[i*3+2]
+            );
+
+            let dir = target.sub(current).multiplyScalar(0.05);
+            posArray[i*3] += dir.x;
+            posArray[i*3+1] += dir.y;
+            posArray[i*3+2] += dir.z;
+
+            if (dir.length() > 0.001) done = false;
+        }
+
+        if (done) state = "original";
+    }
+
+    // absorb spawn particles
+    spawnParticles.forEach((p, index) => {
+        let dir = p.clone().normalize().multiplyScalar(-0.2);
+        p.add(dir);
+
+        if (p.length() < radius) {
+            spawnParticles.splice(index, 1);
+        }
+    });
+
+    geometry.attributes.position.needsUpdate = true;
+    renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+</script>
+
+</body>
+</html>
