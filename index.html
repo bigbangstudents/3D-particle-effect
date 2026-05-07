@@ -35,25 +35,17 @@
     <div id="label-container"></div>
 </div>
 
-<!-- THREE -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
-<!-- TEACHABLE MACHINE -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 
 <script>
 
-// ==============================
-// TEACHABLE MACHINE SETUP
-// ==============================
-
+// ✅ NEW MODEL URL
 const URL = "https://teachablemachine.withgoogle.com/models/MvoUOZfC_/";
 
 let model, webcam, labelContainer, maxPredictions;
-
-let gestureCooldown = 1500;
-let lastTriggerTime = 0;
+let currentGesture = "";
 
 async function init() {
 
@@ -72,7 +64,6 @@ async function init() {
     document.getElementById("webcam-container").appendChild(webcam.canvas);
 
     labelContainer = document.getElementById("label-container");
-
     for (let i = 0; i < maxPredictions; i++) {
         labelContainer.appendChild(document.createElement("div"));
     }
@@ -87,7 +78,6 @@ async function loop() {
 async function predict() {
 
     const prediction = await model.predict(webcam.canvas);
-    let now = Date.now();
 
     for (let i = 0; i < maxPredictions; i++) {
 
@@ -97,36 +87,34 @@ async function predict() {
         labelContainer.childNodes[i].innerHTML =
             originalClassName + ": " + probability.toFixed(2);
 
-        // Convert to lowercase for matching
         const className = originalClassName.toLowerCase().trim();
 
-        // ✅ BACKGROUND GLOW (no cooldown)
-        if (className === "background" && probability > 0.90) {
-            material.color.set(0xffffff); // white
-        } else {
-            material.color.set(0x00ffff); // cyan
-        }
+        if (probability > 0.90 && className !== currentGesture) {
 
-        // ✅ Gesture actions with cooldown
-        if (probability > 0.90 && now - lastTriggerTime > gestureCooldown) {
+            currentGesture = className;
 
             if (className === "explosion") {
-                console.log("Explosion Triggered");
                 Explosion();
-                lastTriggerTime = now;
             }
 
             if (className === "gravity pull") {
-                console.log("Gravity Pull Triggered");
                 Pull();
-                lastTriggerTime = now;
             }
+
+            if (className === "background") {
+                Background();
+            }
+        }
+
+        if (probability < 0.90 && className === currentGesture) {
+            ResetColor();
+            currentGesture = "";
         }
     }
 }
 
 // ==============================
-// THREE PARTICLE SPHERE
+// THREE SCENE
 // ==============================
 
 let scene = new THREE.Scene();
@@ -151,10 +139,8 @@ let geometry = new THREE.BufferGeometry();
 let positions = new Float32Array(particleCount * 3);
 let originalPositions = [];
 let velocities = [];
-let spawnParticles = [];
 
-let state = "original"; 
-// original | exploding | exploded | pulling
+let state = "original";
 
 function randomSpherePoint(r) {
     let u = Math.random();
@@ -197,7 +183,7 @@ let points = new THREE.Points(geometry, material);
 scene.add(points);
 
 // ==============================
-// FUNCTIONS
+// EFFECT FUNCTIONS
 // ==============================
 
 function Explosion() {
@@ -220,27 +206,20 @@ function Explosion() {
     }
 
     setTimeout(() => {
-        state = "exploded";
-        velocities.forEach(v => v.set(0, 0, 0));
+        state = "original";
     }, 3000);
 }
 
 function Pull() {
+    state = "original";
+}
 
-    if (state === "exploded") {
-        state = "pulling";
-        return;
-    }
+function Background() {
+    material.color.set(0xffffff);
+}
 
-    if (state === "original") {
-        for (let i = 0; i < 400; i++) {
-            spawnParticles.push(new THREE.Vector3(
-                (Math.random() - 0.5) * 20,
-                (Math.random() - 0.5) * 20,
-                (Math.random() - 0.5) * 20
-            ));
-        }
-    }
+function ResetColor() {
+    material.color.set(0x00ffff);
 }
 
 // ==============================
@@ -265,54 +244,11 @@ function animate() {
         }
     }
 
-    if (state === "pulling") {
-
-        let done = true;
-
-        for (let i = 0; i < particleCount; i++) {
-
-            let target = new THREE.Vector3(
-                ...originalPositions[i]
-            );
-
-            let current = new THREE.Vector3(
-                posArray[i * 3],
-                posArray[i * 3 + 1],
-                posArray[i * 3 + 2]
-            );
-
-            let dir = target.sub(current).multiplyScalar(0.06);
-
-            posArray[i * 3] += dir.x;
-            posArray[i * 3 + 1] += dir.y;
-            posArray[i * 3 + 2] += dir.z;
-
-            if (dir.length() > 0.001) done = false;
-        }
-
-        if (done) state = "original";
-    }
-
-    spawnParticles.forEach((p, index) => {
-        let dir = p.clone().normalize().multiplyScalar(-0.25);
-        p.add(dir);
-
-        if (p.length() < radius) {
-            spawnParticles.splice(index, 1);
-        }
-    });
-
     geometry.attributes.position.needsUpdate = true;
     renderer.render(scene, camera);
 }
 
 animate();
-
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
 
 </script>
 
