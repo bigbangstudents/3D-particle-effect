@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Gesture Controlled Particle Sphere</title>
+<title>Cinematic Gesture Sphere</title>
 <style>
     body {
         margin: 0;
@@ -38,6 +38,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<!-- POST PROCESSING -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
 
@@ -84,29 +89,19 @@ async function predict() {
 
     for (let i = 0; i < maxPredictions; i++) {
 
-        const originalClassName = prediction[i].className;
+        const className = prediction[i].className.toLowerCase().trim();
         const probability = prediction[i].probability;
 
         labelContainer.childNodes[i].innerHTML =
-            originalClassName + ": " + probability.toFixed(2);
-
-        const className = originalClassName.toLowerCase().trim();
+            prediction[i].className + ": " + probability.toFixed(2);
 
         if (probability > 0.90 && className !== currentGesture) {
 
             currentGesture = className;
 
-            if (className === "explosion") {
-                Explosion();
-            }
-
-            if (className === "gravity pull") {
-                Pull();
-            }
-
-            if (className === "background") {
-                Background();
-            }
+            if (className === "explosion") Explosion();
+            if (className === "gravity pull") Pull();
+            if (className === "background") Background();
         }
 
         if (probability < 0.90 && className === currentGesture) {
@@ -117,10 +112,11 @@ async function predict() {
 }
 
 // ==============================
-// THREE SCENE
+// THREE SCENE + CINEMATIC SETUP
 // ==============================
 
 let scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000000, 0.15);
 
 let camera = new THREE.PerspectiveCamera(
     75,
@@ -131,9 +127,37 @@ let camera = new THREE.PerspectiveCamera(
 
 let renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputEncoding = THREE.sRGBEncoding;
 document.body.appendChild(renderer.domElement);
 
 camera.position.z = 6;
+
+// ✅ Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0x00ffff, 1);
+directionalLight.position.set(5, 5, 5);
+scene.add(directionalLight);
+
+// ✅ Bloom composer
+const composer = new THREE.EffectComposer(renderer);
+const renderPass = new THREE.RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const bloomPass = new THREE.UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    1.5,   // strength
+    0.4,   // radius
+    0.2    // threshold
+);
+composer.addPass(bloomPass);
+
+// ==============================
+// PARTICLE SPHERE
+// ==============================
 
 let particleCount = 7000;
 let radius = 2;
@@ -143,8 +167,7 @@ let positions = new Float32Array(particleCount * 3);
 let originalPositions = [];
 let velocities = [];
 
-let state = "original"; 
-// original | exploding | pulling
+let state = "original";
 
 function randomSpherePoint(r) {
     let u = Math.random();
@@ -159,7 +182,6 @@ function randomSpherePoint(r) {
     ];
 }
 
-// Create sphere
 for (let i = 0; i < particleCount; i++) {
 
     let [x, y, z] = randomSpherePoint(radius);
@@ -179,24 +201,24 @@ geometry.setAttribute(
 
 let material = new THREE.PointsMaterial({
     color: 0x00ffff,
-    size: 0.04,
+    size: 0.05,
     transparent: true,
-    blending: THREE.AdditiveBlending
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
 });
 
 let points = new THREE.Points(geometry, material);
 scene.add(points);
 
 // ==============================
-// EFFECT FUNCTIONS
+// EFFECTS
 // ==============================
 
-// ✅ Explosion only works if original
 function Explosion() {
-
     if (state !== "original") return;
-
     state = "exploding";
+
+    bloomPass.strength = 2.5;
 
     for (let i = 0; i < particleCount; i++) {
 
@@ -207,30 +229,29 @@ function Explosion() {
         ).normalize();
 
         velocities[i] = dir.multiplyScalar(
-            Math.random() * 0.4 + 0.15
+            Math.random() * 0.4 + 0.2
         );
     }
 }
 
-// ✅ Gravity Pull only works if currently exploding
 function Pull() {
-
     if (state !== "exploding") return;
-
     state = "pulling";
+    bloomPass.strength = 1.5;
 }
 
-// ✅ Background glow only (no state change)
 function Background() {
     material.color.set(0xffffff);
+    bloomPass.strength = 3.0;
 }
 
 function ResetColor() {
     material.color.set(0x00ffff);
+    bloomPass.strength = 1.5;
 }
 
 // ==============================
-// ANIMATION LOOP
+// ANIMATION
 // ==============================
 
 function animate() {
@@ -257,30 +278,23 @@ function animate() {
 
         for (let i = 0; i < particleCount; i++) {
 
-            let targetX = originalPositions[i][0];
-            let targetY = originalPositions[i][1];
-            let targetZ = originalPositions[i][2];
-
-            let dx = targetX - posArray[i * 3];
-            let dy = targetY - posArray[i * 3 + 1];
-            let dz = targetZ - posArray[i * 3 + 2];
+            let dx = originalPositions[i][0] - posArray[i * 3];
+            let dy = originalPositions[i][1] - posArray[i * 3 + 1];
+            let dz = originalPositions[i][2] - posArray[i * 3 + 2];
 
             posArray[i * 3] += dx * 0.05;
             posArray[i * 3 + 1] += dy * 0.05;
             posArray[i * 3 + 2] += dz * 0.05;
 
-            if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01 || Math.abs(dz) > 0.01) {
-                finished = false;
-            }
+            if (Math.abs(dx) > 0.01) finished = false;
         }
 
-        if (finished) {
-            state = "original";
-        }
+        if (finished) state = "original";
     }
 
     geometry.attributes.position.needsUpdate = true;
-    renderer.render(scene, camera);
+
+    composer.render();
 }
 
 animate();
@@ -289,6 +303,7 @@ window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 </script>
