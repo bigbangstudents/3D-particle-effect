@@ -83,28 +83,33 @@ async function loop() {
 async function predict() {
     const prediction = await model.predict(webcam.canvas);
 
-    let highest = prediction.reduce((a, b) => 
-        a.probability > b.probability ? a : b
-    );
-
-    labelContainer.innerHTML = highest.className + 
-        " : " + highest.probability.toFixed(2);
-
     let now = Date.now();
 
-    if (highest.probability > 0.95 && 
-        highest.className !== lastGesture &&
-        now - lastTriggerTime > gestureCooldown) {
+    for (let i = 0; i < maxPredictions; i++) {
 
-        lastGesture = highest.className;
-        lastTriggerTime = now;
+        const originalClassName = prediction[i].className;
+        const probability = prediction[i].probability;
 
-        if (highest.className === "Explosion") {
-            Explosion();
-        }
+        // Show prediction labels properly
+        labelContainer.childNodes[i].innerHTML =
+            originalClassName + ": " + probability.toFixed(2);
 
-        if (highest.className === "Gravity pull") {
-            Pull();
+        // Convert to lowercase for safe comparison
+        const className = originalClassName.toLowerCase().trim();
+
+        if (probability > 0.90 && now - lastTriggerTime > gestureCooldown) {
+
+            if (className === "explosion") {
+                console.log("Explosion Triggered");
+                Explosion();
+                lastTriggerTime = now;
+            }
+
+            if (className === "gravity pull") {
+                console.log("Gravity Pull Triggered");
+                Pull();
+                lastTriggerTime = now;
+            }
         }
     }
 }
