@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Cinematic Gesture Sphere</title>
+<title>Cinematic Energy Sphere</title>
 <style>
     body {
         margin: 0;
@@ -39,7 +39,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 
-<!-- POST PROCESSING -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
@@ -112,7 +111,7 @@ async function predict() {
 }
 
 // ==============================
-// THREE SCENE + CINEMATIC SETUP
+// THREE SCENE
 // ==============================
 
 let scene = new THREE.Scene();
@@ -128,42 +127,33 @@ let camera = new THREE.PerspectiveCamera(
 let renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
 renderer.outputEncoding = THREE.sRGBEncoding;
 document.body.appendChild(renderer.domElement);
 
 camera.position.z = 6;
 
-// ✅ Lighting
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
-scene.add(ambientLight);
-
-const directionalLight = new THREE.DirectionalLight(0x00ffff, 1);
-directionalLight.position.set(5, 5, 5);
-scene.add(directionalLight);
-
-// ✅ Bloom composer
+// Bloom
 const composer = new THREE.EffectComposer(renderer);
-const renderPass = new THREE.RenderPass(scene, camera);
-composer.addPass(renderPass);
+composer.addPass(new THREE.RenderPass(scene, camera));
 
 const bloomPass = new THREE.UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    1.5,   // strength
-    0.4,   // radius
-    0.2    // threshold
+    1.5,
+    0.4,
+    0.2
 );
 composer.addPass(bloomPass);
 
 // ==============================
-// PARTICLE SPHERE
+// PARTICLES
 // ==============================
 
-let particleCount = 7000;
+let particleCount = 4000;
 let radius = 2;
 
 let geometry = new THREE.BufferGeometry();
 let positions = new Float32Array(particleCount * 3);
+let previousPositions = new Float32Array(particleCount * 3);
 let originalPositions = [];
 let velocities = [];
 
@@ -190,25 +180,46 @@ for (let i = 0; i < particleCount; i++) {
     positions[i * 3 + 1] = y;
     positions[i * 3 + 2] = z;
 
+    previousPositions[i * 3] = x;
+    previousPositions[i * 3 + 1] = y;
+    previousPositions[i * 3 + 2] = z;
+
     originalPositions.push([x, y, z]);
     velocities.push(new THREE.Vector3());
 }
 
-geometry.setAttribute(
-    'position',
-    new THREE.BufferAttribute(positions, 3)
-);
+geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
 let material = new THREE.PointsMaterial({
     color: 0x00ffff,
     size: 0.05,
-    transparent: true,
     blending: THREE.AdditiveBlending,
+    transparent: true,
     depthWrite: false
 });
 
 let points = new THREE.Points(geometry, material);
 scene.add(points);
+
+// ==============================
+// TRAILS
+// ==============================
+
+let trailGeometry = new THREE.BufferGeometry();
+let trailPositions = new Float32Array(particleCount * 6);
+
+trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+
+let trailMaterial = new THREE.LineBasicMaterial({
+    color: 0x00ffff,
+    transparent: true,
+    opacity: 0.5,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+});
+
+let trails = new THREE.LineSegments(trailGeometry, trailMaterial);
+scene.add(trails);
 
 // ==============================
 // EFFECTS
@@ -217,20 +228,16 @@ scene.add(points);
 function Explosion() {
     if (state !== "original") return;
     state = "exploding";
-
     bloomPass.strength = 2.5;
 
     for (let i = 0; i < particleCount; i++) {
-
         let dir = new THREE.Vector3(
             positions[i * 3],
             positions[i * 3 + 1],
             positions[i * 3 + 2]
         ).normalize();
 
-        velocities[i] = dir.multiplyScalar(
-            Math.random() * 0.4 + 0.2
-        );
+        velocities[i] = dir.multiplyScalar(Math.random() * 0.5 + 0.2);
     }
 }
 
@@ -242,11 +249,13 @@ function Pull() {
 
 function Background() {
     material.color.set(0xffffff);
+    trailMaterial.color.set(0xffffff);
     bloomPass.strength = 3.0;
 }
 
 function ResetColor() {
     material.color.set(0x00ffff);
+    trailMaterial.color.set(0x00ffff);
     bloomPass.strength = 1.5;
 }
 
@@ -258,6 +267,9 @@ function animate() {
     requestAnimationFrame(animate);
 
     let posArray = geometry.attributes.position.array;
+
+    // Save previous positions for trails
+    previousPositions.set(posArray);
 
     if (state === "original") {
         points.rotation.y += 0.004;
@@ -292,7 +304,20 @@ function animate() {
         if (finished) state = "original";
     }
 
+    // Update trails
+    for (let i = 0; i < particleCount; i++) {
+
+        trailPositions[i * 6] = previousPositions[i * 3];
+        trailPositions[i * 6 + 1] = previousPositions[i * 3 + 1];
+        trailPositions[i * 6 + 2] = previousPositions[i * 3 + 2];
+
+        trailPositions[i * 6 + 3] = posArray[i * 3];
+        trailPositions[i * 6 + 4] = posArray[i * 3 + 1];
+        trailPositions[i * 6 + 5] = posArray[i * 3 + 2];
+    }
+
     geometry.attributes.position.needsUpdate = true;
+    trailGeometry.attributes.position.needsUpdate = true;
 
     composer.render();
 }
