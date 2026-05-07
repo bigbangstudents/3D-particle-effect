@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Teachable Machine Particle Sphere</title>
+<title>Gesture Controlled Particle Sphere</title>
 <style>
     body {
         margin: 0;
@@ -22,37 +22,36 @@
         margin: 4px;
         cursor: pointer;
     }
-    #label-container {
-        margin-top: 10px;
-    }
 </style>
 </head>
 <body>
 
 <div id="ui">
-    <h3>Teachable Machine Image Model</h3>
+    <h3>Teachable Machine Control</h3>
     <button onclick="init()">Start Camera</button>
-    <button onclick="Explosion()">Explosion</button>
-    <button onclick="Pull()">Pull</button>
     <div id="webcam-container"></div>
     <div id="label-container"></div>
 </div>
 
+<!-- THREE -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<!-- TEACHABLE MACHINE -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 
 <script>
 
-// ============================
-// TEACHABLE MACHINE
-// ============================
+// ==============================
+// TEACHABLE MACHINE SETUP
+// ==============================
 
 const URL = "https://teachablemachine.withgoogle.com/models/PoD2MZmbC/";
 
 let model, webcam, labelContainer, maxPredictions;
+let lastGesture = "";
+let gestureCooldown = 1500; 
 let lastTriggerTime = 0;
-let triggerCooldown = 2000; // 2 sec cooldown
 
 async function init() {
     const modelURL = URL + "model.json";
@@ -84,58 +83,63 @@ async function loop() {
 async function predict() {
     const prediction = await model.predict(webcam.canvas);
 
+    let highest = prediction.reduce((a, b) => 
+        a.probability > b.probability ? a : b
+    );
+
+    labelContainer.innerHTML = highest.className + 
+        " : " + highest.probability.toFixed(2);
+
     let now = Date.now();
 
-    for (let i = 0; i < maxPredictions; i++) {
-        const className = prediction[i].className;
-        const probability = prediction[i].probability;
+    if (highest.probability > 0.95 && 
+        highest.className !== lastGesture &&
+        now - lastTriggerTime > gestureCooldown) {
 
-        labelContainer.childNodes[i].innerHTML =
-            className + ": " + probability.toFixed(2);
+        lastGesture = highest.className;
+        lastTriggerTime = now;
 
-        if (probability > 0.95 && now - lastTriggerTime > triggerCooldown) {
+        if (highest.className === "Explosion") {
+            Explosion();
+        }
 
-            if (className === "explosion") {
-                Explosion();
-                lastTriggerTime = now;
-            }
-
-            if (className === "gravity pull") {
-                Pull();
-                lastTriggerTime = now;
-            }
+        if (highest.className === "Gravity pull") {
+            Pull();
         }
     }
 }
 
-// ============================
-// THREE JS PARTICLE SPHERE
-// ============================
+// ==============================
+// THREE PARTICLE SPHERE
+// ==============================
 
 let scene = new THREE.Scene();
-let camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+let camera = new THREE.PerspectiveCamera(
+    75, window.innerWidth/window.innerHeight, 0.1, 1000
+);
 let renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 camera.position.z = 6;
 
-let particleCount = 6000;
+let particleCount = 7000;
+let radius = 2;
+
 let geometry = new THREE.BufferGeometry();
 let positions = new Float32Array(particleCount * 3);
 let originalPositions = [];
 let velocities = [];
 let spawnParticles = [];
-let radius = 2;
 
-let state = "original"; 
+let state = "original";
 // original | exploding | exploded | pulling
 
 function randomSpherePoint(r) {
     let u = Math.random();
     let v = Math.random();
     let theta = 2 * Math.PI * u;
-    let phi = Math.acos(2 * v - 1);
+    let phi = Math.acos(2*v - 1);
     return [
         r * Math.sin(phi) * Math.cos(theta),
         r * Math.sin(phi) * Math.sin(theta),
@@ -148,6 +152,7 @@ for (let i = 0; i < particleCount; i++) {
     positions[i*3] = x;
     positions[i*3+1] = y;
     positions[i*3+2] = z;
+
     originalPositions.push([x,y,z]);
     velocities.push(new THREE.Vector3());
 }
@@ -157,16 +162,16 @@ geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 let material = new THREE.PointsMaterial({
     color: 0x00ffff,
     size: 0.04,
-    blending: THREE.AdditiveBlending,
-    transparent: true
+    transparent: true,
+    blending: THREE.AdditiveBlending
 });
 
 let points = new THREE.Points(geometry, material);
 scene.add(points);
 
-// ============================
+// ==============================
 // FUNCTIONS
-// ============================
+// ==============================
 
 function Explosion() {
     if (state !== "original") return;
@@ -180,7 +185,7 @@ function Explosion() {
             positions[i*3+2]
         ).normalize();
 
-        velocities[i] = dir.multiplyScalar(Math.random()*0.3 + 0.1);
+        velocities[i] = dir.multiplyScalar(Math.random()*0.4 + 0.15);
     }
 
     setTimeout(() => {
@@ -197,8 +202,7 @@ function Pull() {
     }
 
     if (state === "original") {
-        // spawn particles that get absorbed
-        for (let i = 0; i < 300; i++) {
+        for (let i = 0; i < 400; i++) {
             spawnParticles.push(new THREE.Vector3(
                 (Math.random()-0.5)*20,
                 (Math.random()-0.5)*20,
@@ -208,9 +212,9 @@ function Pull() {
     }
 }
 
-// ============================
+// ==============================
 // ANIMATION LOOP
-// ============================
+// ==============================
 
 function animate() {
     requestAnimationFrame(animate);
@@ -241,7 +245,7 @@ function animate() {
                 posArray[i*3+2]
             );
 
-            let dir = target.sub(current).multiplyScalar(0.05);
+            let dir = target.sub(current).multiplyScalar(0.06);
             posArray[i*3] += dir.x;
             posArray[i*3+1] += dir.y;
             posArray[i*3+2] += dir.z;
@@ -252,9 +256,8 @@ function animate() {
         if (done) state = "original";
     }
 
-    // absorb spawn particles
     spawnParticles.forEach((p, index) => {
-        let dir = p.clone().normalize().multiplyScalar(-0.2);
+        let dir = p.clone().normalize().multiplyScalar(-0.25);
         p.add(dir);
 
         if (p.length() < radius) {
