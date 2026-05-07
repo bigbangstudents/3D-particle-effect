@@ -11,12 +11,14 @@
         font-family: Arial, sans-serif;
         color: white;
     }
+
     #ui {
         position: absolute;
         top: 10px;
         left: 10px;
         z-index: 10;
     }
+
     button {
         padding: 8px 12px;
         margin: 4px;
@@ -46,14 +48,15 @@
 // TEACHABLE MACHINE SETUP
 // ==============================
 
-const URL = "https://teachablemachine.withgoogle.com/models/MvoUOZfC_/";
+const URL = "https://teachablemachine.withgoogle.com/models/PoD2MZmbC/";
 
 let model, webcam, labelContainer, maxPredictions;
-let lastGesture = "";
-let gestureCooldown = 1500; 
+
+let gestureCooldown = 1500;
 let lastTriggerTime = 0;
 
 async function init() {
+
     const modelURL = URL + "model.json";
     const metadataURL = URL + "metadata.json";
 
@@ -67,6 +70,7 @@ async function init() {
     window.requestAnimationFrame(loop);
 
     document.getElementById("webcam-container").appendChild(webcam.canvas);
+
     labelContainer = document.getElementById("label-container");
 
     for (let i = 0; i < maxPredictions; i++) {
@@ -81,8 +85,8 @@ async function loop() {
 }
 
 async function predict() {
-    const prediction = await model.predict(webcam.canvas);
 
+    const prediction = await model.predict(webcam.canvas);
     let now = Date.now();
 
     for (let i = 0; i < maxPredictions; i++) {
@@ -90,13 +94,20 @@ async function predict() {
         const originalClassName = prediction[i].className;
         const probability = prediction[i].probability;
 
-        // Show prediction labels properly
         labelContainer.childNodes[i].innerHTML =
             originalClassName + ": " + probability.toFixed(2);
 
-        // Convert to lowercase for safe comparison
+        // Convert to lowercase for matching
         const className = originalClassName.toLowerCase().trim();
 
+        // ✅ BACKGROUND GLOW (no cooldown)
+        if (className === "background" && probability > 0.90) {
+            material.color.set(0xffffff); // white
+        } else {
+            material.color.set(0x00ffff); // cyan
+        }
+
+        // ✅ Gesture actions with cooldown
         if (probability > 0.90 && now - lastTriggerTime > gestureCooldown) {
 
             if (className === "explosion") {
@@ -119,9 +130,14 @@ async function predict() {
 // ==============================
 
 let scene = new THREE.Scene();
+
 let camera = new THREE.PerspectiveCamera(
-    75, window.innerWidth/window.innerHeight, 0.1, 1000
+    75,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
 );
+
 let renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
@@ -137,14 +153,15 @@ let originalPositions = [];
 let velocities = [];
 let spawnParticles = [];
 
-let state = "original";
+let state = "original"; 
 // original | exploding | exploded | pulling
 
 function randomSpherePoint(r) {
     let u = Math.random();
     let v = Math.random();
     let theta = 2 * Math.PI * u;
-    let phi = Math.acos(2*v - 1);
+    let phi = Math.acos(2 * v - 1);
+
     return [
         r * Math.sin(phi) * Math.cos(theta),
         r * Math.sin(phi) * Math.sin(theta),
@@ -153,16 +170,21 @@ function randomSpherePoint(r) {
 }
 
 for (let i = 0; i < particleCount; i++) {
-    let [x,y,z] = randomSpherePoint(radius);
-    positions[i*3] = x;
-    positions[i*3+1] = y;
-    positions[i*3+2] = z;
 
-    originalPositions.push([x,y,z]);
+    let [x, y, z] = randomSpherePoint(radius);
+
+    positions[i * 3] = x;
+    positions[i * 3 + 1] = y;
+    positions[i * 3 + 2] = z;
+
+    originalPositions.push([x, y, z]);
     velocities.push(new THREE.Vector3());
 }
 
-geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+geometry.setAttribute(
+    'position',
+    new THREE.BufferAttribute(positions, 3)
+);
 
 let material = new THREE.PointsMaterial({
     color: 0x00ffff,
@@ -179,23 +201,27 @@ scene.add(points);
 // ==============================
 
 function Explosion() {
+
     if (state !== "original") return;
 
     state = "exploding";
 
     for (let i = 0; i < particleCount; i++) {
+
         let dir = new THREE.Vector3(
-            positions[i*3],
-            positions[i*3+1],
-            positions[i*3+2]
+            positions[i * 3],
+            positions[i * 3 + 1],
+            positions[i * 3 + 2]
         ).normalize();
 
-        velocities[i] = dir.multiplyScalar(Math.random()*0.4 + 0.15);
+        velocities[i] = dir.multiplyScalar(
+            Math.random() * 0.4 + 0.15
+        );
     }
 
     setTimeout(() => {
         state = "exploded";
-        velocities.forEach(v => v.set(0,0,0));
+        velocities.forEach(v => v.set(0, 0, 0));
     }, 3000);
 }
 
@@ -209,9 +235,9 @@ function Pull() {
     if (state === "original") {
         for (let i = 0; i < 400; i++) {
             spawnParticles.push(new THREE.Vector3(
-                (Math.random()-0.5)*20,
-                (Math.random()-0.5)*20,
-                (Math.random()-0.5)*20
+                (Math.random() - 0.5) * 20,
+                (Math.random() - 0.5) * 20,
+                (Math.random() - 0.5) * 20
             ));
         }
     }
@@ -233,27 +259,33 @@ function animate() {
 
     if (state === "exploding") {
         for (let i = 0; i < particleCount; i++) {
-            posArray[i*3] += velocities[i].x;
-            posArray[i*3+1] += velocities[i].y;
-            posArray[i*3+2] += velocities[i].z;
+            posArray[i * 3] += velocities[i].x;
+            posArray[i * 3 + 1] += velocities[i].y;
+            posArray[i * 3 + 2] += velocities[i].z;
         }
     }
 
     if (state === "pulling") {
+
         let done = true;
 
         for (let i = 0; i < particleCount; i++) {
-            let target = new THREE.Vector3(...originalPositions[i]);
+
+            let target = new THREE.Vector3(
+                ...originalPositions[i]
+            );
+
             let current = new THREE.Vector3(
-                posArray[i*3],
-                posArray[i*3+1],
-                posArray[i*3+2]
+                posArray[i * 3],
+                posArray[i * 3 + 1],
+                posArray[i * 3 + 2]
             );
 
             let dir = target.sub(current).multiplyScalar(0.06);
-            posArray[i*3] += dir.x;
-            posArray[i*3+1] += dir.y;
-            posArray[i*3+2] += dir.z;
+
+            posArray[i * 3] += dir.x;
+            posArray[i * 3 + 1] += dir.y;
+            posArray[i * 3 + 2] += dir.z;
 
             if (dir.length() > 0.001) done = false;
         }
@@ -277,7 +309,7 @@ function animate() {
 animate();
 
 window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
