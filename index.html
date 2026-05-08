@@ -2,191 +2,261 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>GPU Neon Plasma Sphere</title>
-
+<title>GPU Plasma Energy Control</title>
 <style>
-    body {
-        margin: 0;
-        overflow: hidden;
-        background: black;
-    }
+body { margin:0; overflow:hidden; background:black; color:white; font-family:Arial; }
+#ui { position:absolute; top:10px; left:10px; z-index:10; }
+button { padding:6px 10px; margin:4px; }
 </style>
 </head>
 <body>
 
+<div id="ui">
+    <button onclick="init()">Start Camera</button>
+    <div id="webcam-container"></div>
+    <div id="label-container"></div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 
 <script>
 
-// =======================
-// BASIC SCENE
-// =======================
+// ======================
+// THREE SETUP
+// ======================
 
 let scene = new THREE.Scene();
 
 let camera = new THREE.PerspectiveCamera(
-    75,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    1000
+    75, window.innerWidth/window.innerHeight, 0.1, 1000
 );
 camera.position.z = 4;
 
-let renderer = new THREE.WebGLRenderer({ antialias: true });
+let renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(window.devicePixelRatio);
-renderer.setClearColor(0x000000);
 document.body.appendChild(renderer.domElement);
 
-// =======================
+// ======================
 // UNIFORMS
-// =======================
+// ======================
 
 let uniforms = {
-    time: { value: 0.0 },
-    intensity: { value: 1.0 }
+    time: { value: 0 },
+    explosion: { value: 0 },
+    intensity: { value: 1 },
+    whiteMode: { value: 0 }
 };
 
-// =======================
+// ======================
 // GEOMETRY
-// =======================
+// ======================
 
 let geometry = new THREE.SphereBufferGeometry(1.5, 128, 128);
 
-// =======================
-// SHADER MATERIAL
-// =======================
+// store original positions
+let basePositions = geometry.attributes.position.array.slice();
+
+// ======================
+// SHADER
+// ======================
 
 let material = new THREE.ShaderMaterial({
 
-    uniforms: uniforms,
+uniforms: uniforms,
 
-    vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+vertexShader: `
+uniform float explosion;
+varying vec2 vUv;
+varying vec3 vNormal;
 
-        void main() {
-            vUv = uv;
-            vNormal = normal;
+void main(){
+    vUv = uv;
+    vNormal = normal;
 
-            gl_Position = projectionMatrix *
-                          modelViewMatrix *
-                          vec4(position, 1.0);
-        }
-    `,
+    vec3 newPosition = position + normal * explosion;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition,1.0);
+}
+`,
 
-    fragmentShader: `
-        uniform float time;
-        uniform float intensity;
+fragmentShader: `
+uniform float time;
+uniform float intensity;
+uniform float whiteMode;
+varying vec2 vUv;
+varying vec3 vNormal;
 
-        varying vec2 vUv;
-        varying vec3 vNormal;
+vec3 palette(float t){
+    vec3 a = vec3(0.5);
+    vec3 b = vec3(0.5);
+    vec3 c = vec3(1.0);
+    vec3 d = vec3(0.0,0.33,0.67);
+    return a + b*cos(6.28318*(c*t+d));
+}
 
-        // Neon palette
-        vec3 palette(float t) {
-            vec3 a = vec3(0.5, 0.5, 0.5);
-            vec3 b = vec3(0.5, 0.5, 0.5);
-            vec3 c = vec3(1.0, 1.0, 1.0);
-            vec3 d = vec3(0.0, 0.33, 0.67);
-            return a + b*cos(6.28318*(c*t+d));
-        }
+void main(){
 
-        void main() {
+    float glow = pow(dot(normalize(vNormal), vec3(0,0,1)), 2.0);
 
-            float glow = dot(normalize(vNormal), vec3(0.0,0.0,1.0));
-            glow = pow(glow, 2.0);
+    float wave =
+        sin(vUv.x*10.0 + time*2.0) +
+        sin(vUv.y*15.0 - time*1.5);
 
-            float wave =
-                sin(vUv.x * 10.0 + time * 2.0) +
-                sin(vUv.y * 15.0 - time * 1.5);
+    float plasma = wave*0.5 + glow*2.0;
 
-            wave *= 0.5;
+    vec3 color;
 
-            float plasma = wave + glow * 2.0;
+    if(whiteMode > 0.5){
+        color = vec3(1.0);
+    } else {
+        color = palette(plasma + time*0.2);
+    }
 
-            vec3 color = palette(plasma + time * 0.2);
+    color *= intensity;
+    color += glow*1.5;
 
-            color *= intensity;
-            color += glow * 1.5;
+    gl_FragColor = vec4(color,1.0);
+}
+`,
 
-            gl_FragColor = vec4(color, 1.0);
-        }
-    `,
-
-    blending: THREE.AdditiveBlending,
-    transparent: true,
-    depthWrite: false
+transparent:true,
+blending:THREE.AdditiveBlending,
+depthWrite:false
 
 });
 
 let sphere = new THREE.Mesh(geometry, material);
 scene.add(sphere);
 
-// =======================
-// OUTER GLOW SHELL
-// =======================
+// ======================
+// STATES
+// ======================
 
-let glowMaterial = new THREE.ShaderMaterial({
+let state = "original";
 
-    uniforms: uniforms,
+// ======================
+// EFFECT FUNCTIONS
+// ======================
 
-    vertexShader: `
-        varying vec3 vNormal;
-        void main() {
-            vNormal = normalize(normalMatrix * normal);
-            gl_Position = projectionMatrix *
-                          modelViewMatrix *
-                          vec4(position * 1.1, 1.0);
-        }
-    `,
+function Explosion(){
+    if(state !== "original") return;
+    state = "exploding";
+}
 
-    fragmentShader: `
-        varying vec3 vNormal;
+function Pull(){
+    if(state !== "exploding") return;
+    state = "pulling";
+}
 
-        void main() {
-            float intensity = pow(0.6 - dot(vNormal, vec3(0,0,1.0)), 2.0);
-            gl_FragColor = vec4(0.0, 1.0, 1.0, intensity);
-        }
-    `,
+function Background(){
+    uniforms.whiteMode.value = 1;
+}
 
-    side: THREE.BackSide,
-    blending: THREE.AdditiveBlending,
-    transparent: true,
-    depthWrite: false
+function ResetColor(){
+    uniforms.whiteMode.value = 0;
+}
 
-});
-
-let glowMesh = new THREE.Mesh(geometry, glowMaterial);
-scene.add(glowMesh);
-
-// =======================
+// ======================
 // ANIMATION
-// =======================
+// ======================
 
-function animate() {
+function animate(){
     requestAnimationFrame(animate);
 
     uniforms.time.value += 0.02;
 
+    if(state === "exploding"){
+        uniforms.explosion.value += 0.02;
+        if(uniforms.explosion.value > 1.5){
+            uniforms.explosion.value = 1.5;
+        }
+    }
+
+    if(state === "pulling"){
+        uniforms.explosion.value -= 0.05;
+        if(uniforms.explosion.value <= 0){
+            uniforms.explosion.value = 0;
+            state = "original";
+        }
+    }
+
     sphere.rotation.y += 0.003;
     sphere.rotation.x += 0.002;
 
-    renderer.render(scene, camera);
+    renderer.render(scene,camera);
 }
 
 animate();
 
-// =======================
-// RESIZE
-// =======================
-
-window.addEventListener("resize", () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
+window.addEventListener("resize",()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
     camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(window.innerWidth,window.innerHeight);
 });
 
-</script>
+// ======================
+// TEACHABLE MACHINE
+// ======================
 
+const URL = "https://teachablemachine.withgoogle.com/models/MvoUOZfC_/";
+
+let model, webcam, labelContainer, maxPredictions;
+let currentGesture = "";
+
+async function init(){
+
+    model = await tmImage.load(URL+"model.json", URL+"metadata.json");
+    maxPredictions = model.getTotalClasses();
+
+    webcam = new tmImage.Webcam(200,200,true);
+    await webcam.setup();
+    await webcam.play();
+    window.requestAnimationFrame(loop);
+
+    document.getElementById("webcam-container").appendChild(webcam.canvas);
+
+    labelContainer = document.getElementById("label-container");
+    for(let i=0;i<maxPredictions;i++){
+        labelContainer.appendChild(document.createElement("div"));
+    }
+}
+
+async function loop(){
+    webcam.update();
+    await predict();
+    window.requestAnimationFrame(loop);
+}
+
+async function predict(){
+
+    const prediction = await model.predict(webcam.canvas);
+
+    for(let i=0;i<maxPredictions;i++){
+
+        const className = prediction[i].className.toLowerCase().trim();
+        const probability = prediction[i].probability;
+
+        labelContainer.childNodes[i].innerHTML =
+            prediction[i].className + ": " + probability.toFixed(2);
+
+        if(probability > 0.90 && className !== currentGesture){
+
+            currentGesture = className;
+
+            if(className === "explosion") Explosion();
+            if(className === "gravity pull") Pull();
+            if(className === "background") Background();
+        }
+
+        if(probability < 0.90 && className === currentGesture){
+            ResetColor();
+            currentGesture = "";
+        }
+    }
+}
+
+</script>
 </body>
 </html>
