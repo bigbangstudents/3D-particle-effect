@@ -96,10 +96,9 @@
         const particleCount = 25000; 
         
         let originalPositions = [];
-        let compressedPositions = []; // New array for the half-radius state
+        let compressedPositions = []; 
         let velocities = [];
         
-        // Expanded states to handle compression and reverting
         let sphereState = 'idle_normal'; 
 
         function createGlowTexture() {
@@ -155,22 +154,18 @@
                 const y = r * Math.sin(phi) * Math.sin(theta);
                 const z = r * Math.cos(phi);
 
-                // Set initial positions
                 positions[i * 3] = x;
                 positions[i * 3 + 1] = y;
                 positions[i * 3 + 2] = z;
 
-                // Save original target positions (1x radius)
                 originalPositions[i * 3] = x;
                 originalPositions[i * 3 + 1] = y;
                 originalPositions[i * 3 + 2] = z;
 
-                // Save compressed target positions (0.5x radius)
                 compressedPositions[i * 3] = x * 0.5;
                 compressedPositions[i * 3 + 1] = y * 0.5;
                 compressedPositions[i * 3 + 2] = z * 0.5;
 
-                // Outward velocity vector for explosion
                 const speed = Math.random() * 0.6 + 0.1;
                 velocities[i * 3] = (x / r) * speed;
                 velocities[i * 3 + 1] = (y / r) * speed;
@@ -221,7 +216,6 @@
             else if (sphereState === 'pulling') {
                 let allHome = true;
                 for (let i = 0; i < particleCount; i++) {
-                    // Interpolate towards the COMPRESSED (half radius) positions
                     positions[i * 3] += (compressedPositions[i * 3] - positions[i * 3]) * 0.06;
                     positions[i * 3 + 1] += (compressedPositions[i * 3 + 1] - positions[i * 3 + 1]) * 0.06;
                     positions[i * 3 + 2] += (compressedPositions[i * 3 + 2] - positions[i * 3 + 2]) * 0.06;
@@ -236,7 +230,6 @@
             else if (sphereState === 'reverting') {
                 let allHome = true;
                 for (let i = 0; i < particleCount; i++) {
-                    // Interpolate back to ORIGINAL (full radius) positions
                     positions[i * 3] += (originalPositions[i * 3] - positions[i * 3]) * 0.04;
                     positions[i * 3 + 1] += (originalPositions[i * 3 + 1] - positions[i * 3 + 1]) * 0.04;
                     positions[i * 3 + 2] += (originalPositions[i * 3 + 2] - positions[i * 3 + 2]) * 0.04;
@@ -314,25 +307,25 @@
             // --- AI STATE CONTROL LOGIC ---
             if (highestProb > 0.85) {
                 
-                // 1st Function: Background -> Return to original state and radius
+                // 1st Function: Background
                 if (topClass === "Background") {
-                    // Keep the original cyan color
                     material.color.setHex(0x00ffff); 
                     
-                    // Revert to original size if it is exploded or compressed
-                    if (sphereState !== 'idle_normal' && sphereState !== 'reverting') {
+                    // Only revert if we are currently compressed or actively pulling
+                    // If we are exploded, do nothing and let them fly
+                    if (sphereState === 'idle_compressed' || sphereState === 'pulling') {
                         sphereState = 'reverting';
                     }
                 }
 
-                // 2nd Function: Explosion -> Explode from ANY state
+                // 2nd Function: Explosion
                 if (topClass === "Explosion") {
                     if (sphereState !== 'exploded') {
                         sphereState = 'exploded';
                     }
                 }
 
-                // 3rd Function: Gravity Pull -> Pull and compress to half radius
+                // 3rd Function: Gravity Pull
                 if (topClass === "Gravity Pull") {
                     if (sphereState !== 'pulling' && sphereState !== 'idle_compressed') {
                         sphereState = 'pulling';
