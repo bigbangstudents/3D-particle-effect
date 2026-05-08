@@ -290,7 +290,7 @@
                 const classPrediction = `${prediction[i].className}: ${probability}%`;
                 labelContainer.childNodes[i].innerHTML = classPrediction;
 
-                if (prediction[i].probability > 0.85) {
+                if (prediction[i].probability > 0.90) {
                     labelContainer.childNodes[i].style.color = "#ffffff";
                     labelContainer.childNodes[i].style.fontWeight = "bold";
                 } else {
@@ -305,7 +305,7 @@
             }
 
             // --- AI STATE CONTROL LOGIC ---
-            if (highestProb > 0.85) {
+            if (highestProb > 0.90) {
                 
                 // 1st Function: Background
                 if (topClass === "Background") {
