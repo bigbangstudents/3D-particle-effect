@@ -8,11 +8,10 @@
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #050505; /* Deep dark background for maximum glow contrast */
+            background-color: #050505;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        /* Middle-left UI positioning */
         #ui-container {
             position: absolute;
             left: 20px;
@@ -24,7 +23,7 @@
             border-radius: 12px;
             border: 1px solid #333;
             color: white;
-            box-shadow: 0 4px 25px rgba(0, 255, 255, 0.2); /* Cyan ambient shadow */
+            box-shadow: 0 4px 25px rgba(0, 255, 255, 0.2);
             width: 220px;
             backdrop-filter: blur(5px);
         }
@@ -65,7 +64,6 @@
             color: #00ffff;
         }
 
-        /* 3D Canvas wrapper */
         #canvas-container {
             position: absolute;
             top: 0;
@@ -78,7 +76,6 @@
 </head>
 <body>
 
-    <!-- UI Panel (Middle Left) -->
     <div id="ui-container">
         <h3 style="margin-top:0; font-size:16px; text-align: center; color: #fff;">AI Controller</h3>
         <button type="button" onclick="init()">Initialize AI</button>
@@ -86,40 +83,36 @@
         <div id="label-container"></div>
     </div>
 
-    <!-- 3D Scene Wrapper -->
     <div id="canvas-container"></div>
 
-    <!-- Teachable Machine Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-    
-    <!-- Three.js for 3D Graphics -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
     <script type="text/javascript">
         // --- THREE.JS SETUP ---
         let scene, camera, renderer, particleSystem, material;
         
-        // INCREASED PARTICLE COUNT for cinematic density
         const particleCount = 25000; 
         
         let originalPositions = [];
+        let compressedPositions = []; // New array for the half-radius state
         let velocities = [];
-        let sphereState = 'idle'; // states: 'idle', 'exploded', 'pulling'
+        
+        // Expanded states to handle compression and reverting
+        let sphereState = 'idle_normal'; 
 
-        // Function to create a soft, glowing radial gradient texture
         function createGlowTexture() {
             const canvas = document.createElement('canvas');
             canvas.width = 64;
             canvas.height = 64;
             const context = canvas.getContext('2d');
             
-            // Draw radial gradient
             const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');      // Hot white center
-            gradient.addColorStop(0.2, 'rgba(200, 255, 255, 0.8)');  // Bright core
-            gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.4)');    // Cyan mid-glow
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');            // Fade to transparent
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');      
+            gradient.addColorStop(0.2, 'rgba(200, 255, 255, 0.8)');  
+            gradient.addColorStop(0.5, 'rgba(0, 255, 255, 0.4)');    
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');            
             
             context.fillStyle = gradient;
             context.fillRect(0, 0, 64, 64);
@@ -131,8 +124,6 @@
             const container = document.getElementById('canvas-container');
             
             scene = new THREE.Scene();
-            
-            // Add a subtle fog to make distant particles fade into darkness
             scene.fog = new THREE.FogExp2(0x050505, 0.03);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -140,39 +131,46 @@
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio); // Sharper rendering
+            renderer.setPixelRatio(window.devicePixelRatio); 
             container.appendChild(renderer.domElement);
 
             const geometry = new THREE.BufferGeometry();
             const positions = new Float32Array(particleCount * 3);
+            
             originalPositions = new Float32Array(particleCount * 3);
+            compressedPositions = new Float32Array(particleCount * 3);
             velocities = new Float32Array(particleCount * 3);
 
             const radius = 5;
 
             for (let i = 0; i < particleCount; i++) {
-                // Generate points on a sphere (with slight random offset for a fuzzier edge)
                 const u = Math.random();
                 const v = Math.random();
                 const theta = 2 * Math.PI * u;
                 const phi = Math.acos(2 * v - 1);
                 
-                // Add a tiny bit of random spread to the radius so it's not perfectly sharp
                 const r = radius + (Math.random() * 0.4 - 0.2); 
 
                 const x = r * Math.sin(phi) * Math.cos(theta);
                 const y = r * Math.sin(phi) * Math.sin(theta);
                 const z = r * Math.cos(phi);
 
+                // Set initial positions
                 positions[i * 3] = x;
                 positions[i * 3 + 1] = y;
                 positions[i * 3 + 2] = z;
 
+                // Save original target positions (1x radius)
                 originalPositions[i * 3] = x;
                 originalPositions[i * 3 + 1] = y;
                 originalPositions[i * 3 + 2] = z;
 
-                // Outward velocity vector for explosion (slightly more dynamic variance)
+                // Save compressed target positions (0.5x radius)
+                compressedPositions[i * 3] = x * 0.5;
+                compressedPositions[i * 3 + 1] = y * 0.5;
+                compressedPositions[i * 3 + 2] = z * 0.5;
+
+                // Outward velocity vector for explosion
                 const speed = Math.random() * 0.6 + 0.1;
                 velocities[i * 3] = (x / r) * speed;
                 velocities[i * 3 + 1] = (y / r) * speed;
@@ -181,15 +179,14 @@
 
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
-            // CINEMATIC MATERIAL SETUP
             material = new THREE.PointsMaterial({
-                color: 0x00ffff, // Cyan base
-                size: 0.2, // Slightly larger to show the glow map
-                map: createGlowTexture(), // Apply custom glow
+                color: 0x00ffff, 
+                size: 0.2, 
+                map: createGlowTexture(),
                 transparent: true,
                 opacity: 0.8,
-                blending: THREE.AdditiveBlending, // Makes overlapping particles intensely bright
-                depthWrite: false // Crucial: prevents particles from clipping each other's glow
+                blending: THREE.AdditiveBlending, 
+                depthWrite: false 
             });
 
             particleSystem = new THREE.Points(geometry, material);
@@ -208,7 +205,6 @@
         function animate3D() {
             requestAnimationFrame(animate3D);
 
-            // Default slow rotation
             particleSystem.rotation.y += 0.0015;
             particleSystem.rotation.x += 0.001;
 
@@ -216,7 +212,6 @@
 
             if (sphereState === 'exploded') {
                 for (let i = 0; i < particleCount; i++) {
-                    // Particles fly outward
                     positions[i * 3] += velocities[i * 3];
                     positions[i * 3 + 1] += velocities[i * 3 + 1];
                     positions[i * 3 + 2] += velocities[i * 3 + 2];
@@ -226,27 +221,38 @@
             else if (sphereState === 'pulling') {
                 let allHome = true;
                 for (let i = 0; i < particleCount; i++) {
-                    // Smooth, cinematic interpolation (easing back into place)
+                    // Interpolate towards the COMPRESSED (half radius) positions
+                    positions[i * 3] += (compressedPositions[i * 3] - positions[i * 3]) * 0.06;
+                    positions[i * 3 + 1] += (compressedPositions[i * 3 + 1] - positions[i * 3 + 1]) * 0.06;
+                    positions[i * 3 + 2] += (compressedPositions[i * 3 + 2] - positions[i * 3 + 2]) * 0.06;
+
+                    const distSq = Math.pow(compressedPositions[i*3] - positions[i*3], 2) + 
+                                   Math.pow(compressedPositions[i*3+1] - positions[i*3+1], 2);
+                    if (distSq > 0.05) allHome = false;
+                }
+                particleSystem.geometry.attributes.position.needsUpdate = true;
+                if (allHome) sphereState = 'idle_compressed';
+            }
+            else if (sphereState === 'reverting') {
+                let allHome = true;
+                for (let i = 0; i < particleCount; i++) {
+                    // Interpolate back to ORIGINAL (full radius) positions
                     positions[i * 3] += (originalPositions[i * 3] - positions[i * 3]) * 0.04;
                     positions[i * 3 + 1] += (originalPositions[i * 3 + 1] - positions[i * 3 + 1]) * 0.04;
                     positions[i * 3 + 2] += (originalPositions[i * 3 + 2] - positions[i * 3 + 2]) * 0.04;
 
-                    // Check if particles are close enough to home to snap idle
                     const distSq = Math.pow(originalPositions[i*3] - positions[i*3], 2) + 
                                    Math.pow(originalPositions[i*3+1] - positions[i*3+1], 2);
-                    
                     if (distSq > 0.05) allHome = false;
                 }
                 particleSystem.geometry.attributes.position.needsUpdate = true;
-                if (allHome) sphereState = 'idle';
+                if (allHome) sphereState = 'idle_normal';
             }
 
             renderer.render(scene, camera);
         }
 
-        // Initialize 3D graphics immediately on page load
         init3D();
-
 
         // --- TEACHABLE MACHINE SETUP ---
         const URL = "https://teachablemachine.withgoogle.com/models/MvoUOZfC_/";
@@ -267,7 +273,7 @@
 
             document.getElementById("webcam-container").appendChild(webcam.canvas);
             labelContainer = document.getElementById("label-container");
-            labelContainer.innerHTML = ""; // Clear on restart
+            labelContainer.innerHTML = ""; 
 
             for (let i = 0; i < maxPredictions; i++) { 
                 labelContainer.appendChild(document.createElement("div"));
@@ -286,13 +292,11 @@
             let highestProb = 0;
             let topClass = "";
 
-            // Update UI and find highest probability
             for (let i = 0; i < maxPredictions; i++) {
                 const probability = (prediction[i].probability * 100).toFixed(0);
                 const classPrediction = `${prediction[i].className}: ${probability}%`;
                 labelContainer.childNodes[i].innerHTML = classPrediction;
 
-                // Highlight the active prediction
                 if (prediction[i].probability > 0.85) {
                     labelContainer.childNodes[i].style.color = "#ffffff";
                     labelContainer.childNodes[i].style.fontWeight = "bold";
@@ -308,23 +312,31 @@
             }
 
             // --- AI STATE CONTROL LOGIC ---
-            // High threshold (85%) ensures stability and prevents glitchy flipping
             if (highestProb > 0.85) {
-                // 1st Function: Background -> Turn White (Else Cyan)
+                
+                // 1st Function: Background -> Return to original state and radius
                 if (topClass === "Background") {
-                    material.color.setHex(0xffffff); // Bright White
-                } else {
-                    material.color.setHex(0x00ffff); // Neon Cyan
+                    // Keep the original cyan color
+                    material.color.setHex(0x00ffff); 
+                    
+                    // Revert to original size if it is exploded or compressed
+                    if (sphereState !== 'idle_normal' && sphereState !== 'reverting') {
+                        sphereState = 'reverting';
+                    }
                 }
 
-                // 2nd Function: Explosion
-                if (topClass === "Explosion" && sphereState === 'idle') {
-                    sphereState = 'exploded';
+                // 2nd Function: Explosion -> Explode from ANY state
+                if (topClass === "Explosion") {
+                    if (sphereState !== 'exploded') {
+                        sphereState = 'exploded';
+                    }
                 }
 
-                // 3rd Function: Gravity Pull (Only if already exploded)
-                if (topClass === "Gravity Pull" && sphereState === 'exploded') {
-                    sphereState = 'pulling';
+                // 3rd Function: Gravity Pull -> Pull and compress to half radius
+                if (topClass === "Gravity Pull") {
+                    if (sphereState !== 'pulling' && sphereState !== 'idle_compressed') {
+                        sphereState = 'pulling';
+                    }
                 }
             }
         }
