@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cinematic 3D Glowing Rainbow Sphere</title>
+    <title>Cinematic 3D Glowing Rainbow Spiral Sphere</title>
     <style>
         body {
             margin: 0;
@@ -164,7 +164,7 @@
             velocities = new Float32Array(particleCount * 3);
 
             const radius = 5;
-            const colorHelper = new THREE.Color(); // Used to calculate vibrant colors
+            const colorHelper = new THREE.Color(); 
 
             for (let i = 0; i < particleCount; i++) {
                 const u = Math.random();
@@ -190,13 +190,19 @@
                 compressedPositions[i * 3 + 1] = y * 0.5;
                 compressedPositions[i * 3 + 2] = z * 0.5;
 
-                const speed = Math.random() * 0.6 + 0.1;
-                velocities[i * 3] = (x / r) * speed;
-                velocities[i * 3 + 1] = (y / r) * speed;
-                velocities[i * 3 + 2] = (z / r) * speed;
+                // --- SPIRAL EXPLOSION PHYSICS ---
+                const nx = x / r;
+                const ny = y / r;
+                const nz = z / r;
+                
+                const outwardSpeed = Math.random() * 0.6 + 0.1;
+                const spinMomentum = 0.8; // Controls how intensely the explosion spirals
 
-                // --- VIBRANT RAINBOW COLORS ---
-                // Math.random() gives a full 360 hue sweep. 1.0 is max saturation. 0.6 is bright.
+                // Add tangential velocity for the vortex effect
+                velocities[i * 3] = (nx * outwardSpeed) + (nz * spinMomentum);
+                velocities[i * 3 + 1] = (ny * outwardSpeed); 
+                velocities[i * 3 + 2] = (nz * outwardSpeed) - (nx * spinMomentum);
+
                 colorHelper.setHSL(Math.random(), 1.0, 0.6); 
                 
                 colors[i * 3] = colorHelper.r;
@@ -214,7 +220,7 @@
                 opacity: 0.8,
                 blending: THREE.AdditiveBlending, 
                 depthWrite: false,
-                vertexColors: true // This reads our beautiful rainbow array
+                vertexColors: true
             });
 
             particleSystem = new THREE.Points(geometry, material);
@@ -234,8 +240,9 @@
         function animate3D() {
             requestAnimationFrame(animate3D);
 
-            particleSystem.rotation.y += 0.001;
-            particleSystem.rotation.x += 0.0005;
+            // SPIN x2 AS FAST
+            particleSystem.rotation.y += 0.002;
+            particleSystem.rotation.x += 0.001;
 
             const positions = particleSystem.geometry.attributes.position.array;
 
@@ -250,13 +257,28 @@
             else if (sphereState === 'pulling') {
                 let allHome = true;
                 for (let i = 0; i < particleCount; i++) {
-                    positions[i * 3] += (compressedPositions[i * 3] - positions[i * 3]) * 0.06;
-                    positions[i * 3 + 1] += (compressedPositions[i * 3 + 1] - positions[i * 3 + 1]) * 0.06;
-                    positions[i * 3 + 2] += (compressedPositions[i * 3 + 2] - positions[i * 3 + 2]) * 0.06;
+                    const tx = compressedPositions[i * 3];
+                    const ty = compressedPositions[i * 3 + 1];
+                    const tz = compressedPositions[i * 3 + 2];
+                    
+                    let px = positions[i * 3];
+                    let pz = positions[i * 3 + 2];
+                    
+                    const distSq = Math.pow(tx - px, 2) + Math.pow(ty - positions[i*3+1], 2) + Math.pow(tz - pz, 2);
+                    
+                    // --- SPIRAL PULL PHYSICS ---
+                    // Twist the particles around the Y axis as they pull in
+                    if (distSq > 0.5) {
+                        const spiralAngle = 0.08; 
+                        positions[i * 3] = px * Math.cos(spiralAngle) - pz * Math.sin(spiralAngle);
+                        positions[i * 3 + 2] = px * Math.sin(spiralAngle) + pz * Math.cos(spiralAngle);
+                    }
 
-                    const distSq = Math.pow(compressedPositions[i*3] - positions[i*3], 2) + 
-                                   Math.pow(compressedPositions[i*3+1] - positions[i*3+1], 2);
-                    if (distSq > 0.02) allHome = false;
+                    positions[i * 3] += (tx - positions[i * 3]) * 0.06;
+                    positions[i * 3 + 1] += (ty - positions[i * 3 + 1]) * 0.06;
+                    positions[i * 3 + 2] += (tz - positions[i * 3 + 2]) * 0.06;
+
+                    if (distSq > 0.05) allHome = false;
                 }
                 particleSystem.geometry.attributes.position.needsUpdate = true;
                 if (allHome) sphereState = 'idle_compressed';
@@ -264,13 +286,27 @@
             else if (sphereState === 'reverting') {
                 let allHome = true;
                 for (let i = 0; i < particleCount; i++) {
-                    positions[i * 3] += (originalPositions[i * 3] - positions[i * 3]) * 0.04;
-                    positions[i * 3 + 1] += (originalPositions[i * 3 + 1] - positions[i * 3 + 1]) * 0.04;
-                    positions[i * 3 + 2] += (originalPositions[i * 3 + 2] - positions[i * 3 + 2]) * 0.04;
+                    const tx = originalPositions[i * 3];
+                    const ty = originalPositions[i * 3 + 1];
+                    const tz = originalPositions[i * 3 + 2];
+                    
+                    let px = positions[i * 3];
+                    let pz = positions[i * 3 + 2];
 
-                    const distSq = Math.pow(originalPositions[i*3] - positions[i*3], 2) + 
-                                   Math.pow(originalPositions[i*3+1] - positions[i*3+1], 2);
-                    if (distSq > 0.02) allHome = false;
+                    const distSq = Math.pow(tx - px, 2) + Math.pow(ty - positions[i*3+1], 2) + Math.pow(tz - pz, 2);
+                    
+                    // --- SPIRAL REVERT PHYSICS ---
+                    if (distSq > 0.5) {
+                        const spiralAngle = 0.05; 
+                        positions[i * 3] = px * Math.cos(spiralAngle) - pz * Math.sin(spiralAngle);
+                        positions[i * 3 + 2] = px * Math.sin(spiralAngle) + pz * Math.cos(spiralAngle);
+                    }
+
+                    positions[i * 3] += (tx - positions[i * 3]) * 0.04;
+                    positions[i * 3 + 1] += (ty - positions[i * 3 + 1]) * 0.04;
+                    positions[i * 3 + 2] += (tz - positions[i * 3 + 2]) * 0.04;
+
+                    if (distSq > 0.05) allHome = false;
                 }
                 particleSystem.geometry.attributes.position.needsUpdate = true;
                 if (allHome) sphereState = 'idle_normal';
