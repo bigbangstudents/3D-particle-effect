@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cinematic 3D Glowing Particle Sphere</title>
+    <title>Cinematic 3D Glowing Rainbow Sphere</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #020202; /* Extremely dark background to enhance the bloom contrast */
+            background-color: #020202;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
@@ -85,14 +85,11 @@
 
     <div id="canvas-container"></div>
 
-    <!-- Teachable Machine Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-    
-    <!-- Three.js Core -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
-    <!-- Three.js Post-Processing (Bloom effect libraries) -->
+    <!-- Post-Processing -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
@@ -101,9 +98,8 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
 
     <script type="text/javascript">
-        // --- THREE.JS SETUP ---
         let scene, camera, renderer, particleSystem, material;
-        let composer; // New EffectComposer for Post-Processing Bloom
+        let composer;
         
         const particleCount = 25000; 
         
@@ -113,7 +109,6 @@
         
         let sphereState = 'idle_normal'; 
 
-        // Generate the base texture for particles
         function createGlowTexture() {
             const canvas = document.createElement('canvas');
             canvas.width = 64;
@@ -144,25 +139,20 @@
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio); 
-            // Tone mapping makes colors pop out nicely with bloom
             renderer.toneMapping = THREE.ReinhardToneMapping;
             container.appendChild(renderer.domElement);
 
-            // --- BLOOM POST-PROCESSING SETUP ---
             const renderScene = new THREE.RenderPass(scene, camera);
-            
-            // Parameters: Vector2(resolution), strength, radius, threshold
             const bloomPass = new THREE.UnrealBloomPass(
                 new THREE.Vector2(window.innerWidth, window.innerHeight),
-                2.0,  // Bloom Strength (Intensity of the glow)
-                0.5,  // Bloom Radius (How far the glow spreads)
-                0.1   // Bloom Threshold (Lower means darker pixels will glow)
+                2.0,  
+                0.5,  
+                0.1   
             );
 
             composer = new THREE.EffectComposer(renderer);
             composer.addPass(renderScene);
             composer.addPass(bloomPass);
-            // ------------------------------------
 
             const geometry = new THREE.BufferGeometry();
             
@@ -174,6 +164,7 @@
             velocities = new Float32Array(particleCount * 3);
 
             const radius = 5;
+            const colorHelper = new THREE.Color(); // Used to calculate vibrant colors
 
             for (let i = 0; i < particleCount; i++) {
                 const u = Math.random();
@@ -204,23 +195,26 @@
                 velocities[i * 3 + 1] = (y / r) * speed;
                 velocities[i * 3 + 2] = (z / r) * speed;
 
-                // Random High-Intensity Colors (Pushing values closer to 1.0 increases the glow)
-                colors[i * 3] = Math.random() * 0.5 + 0.5;     // Red
-                colors[i * 3 + 1] = Math.random() * 0.5 + 0.5; // Green
-                colors[i * 3 + 2] = Math.random() * 0.5 + 0.5; // Blue
+                // --- VIBRANT RAINBOW COLORS ---
+                // Math.random() gives a full 360 hue sweep. 1.0 is max saturation. 0.6 is bright.
+                colorHelper.setHSL(Math.random(), 1.0, 0.6); 
+                
+                colors[i * 3] = colorHelper.r;
+                colors[i * 3 + 1] = colorHelper.g;
+                colors[i * 3 + 2] = colorHelper.b;
             }
 
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3)); 
 
             material = new THREE.PointsMaterial({
-                size: 0.15, // Reduced slightly because bloom expands the visual size
+                size: 0.15,
                 map: createGlowTexture(),
                 transparent: true,
                 opacity: 0.8,
                 blending: THREE.AdditiveBlending, 
                 depthWrite: false,
-                vertexColors: true 
+                vertexColors: true // This reads our beautiful rainbow array
             });
 
             particleSystem = new THREE.Points(geometry, material);
@@ -234,7 +228,6 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            // Must also resize the bloom composer
             composer.setSize(window.innerWidth, window.innerHeight);
         }
 
@@ -283,7 +276,6 @@
                 if (allHome) sphereState = 'idle_normal';
             }
 
-            // Render using the COMPOSER (Bloom Pass) instead of the normal renderer
             composer.render();
         }
 
@@ -349,21 +341,18 @@
             // --- AI STATE CONTROL LOGIC ---
             if (highestProb > 0.85) {
                 
-                // 1st Function: Background
                 if (topClass === "Background") {
                     if (sphereState === 'idle_compressed' || sphereState === 'pulling') {
                         sphereState = 'reverting';
                     }
                 }
 
-                // 2nd Function: Explosion
                 if (topClass === "Explosion") {
                     if (sphereState !== 'exploded') {
                         sphereState = 'exploded';
                     }
                 }
 
-                // 3rd Function: Gravity Pull
                 if (topClass === "Gravity Pull") {
                     if (sphereState !== 'pulling' && sphereState !== 'idle_compressed') {
                         sphereState = 'pulling';
