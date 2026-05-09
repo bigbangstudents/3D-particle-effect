@@ -214,8 +214,9 @@
         function animate3D() {
             requestAnimationFrame(animate3D);
 
-            particleSystem.rotation.y += 0.001;
-            particleSystem.rotation.x += 0.0005;
+            // CHANGED: Increased these values to make the sphere spin 5x faster
+            particleSystem.rotation.y += 0.005; 
+            particleSystem.rotation.x += 0.0025; 
 
             const positions = particleSystem.geometry.attributes.position.array;
 
