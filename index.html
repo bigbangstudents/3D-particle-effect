@@ -124,7 +124,6 @@
             const container = document.getElementById('canvas-container');
             
             scene = new THREE.Scene();
-            // Subtly lighter fog to accommodate varied colors
             scene.fog = new THREE.FogExp2(0x050505, 0.02);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -137,9 +136,8 @@
 
             const geometry = new THREE.BufferGeometry();
             
-            // Setup attribute arrays
             const positions = new Float32Array(particleCount * 3);
-            const colors = new Float32Array(particleCount * 3); // NEW: Array for random colors
+            const colors = new Float32Array(particleCount * 3); 
             
             originalPositions = new Float32Array(particleCount * 3);
             compressedPositions = new Float32Array(particleCount * 3);
@@ -148,7 +146,6 @@
             const radius = 6;
 
             for (let i = 0; i < particleCount; i++) {
-                // 1. Position Logic
                 const u = Math.random();
                 const v = Math.random();
                 const theta = 2 * Math.PI * u;
@@ -177,16 +174,13 @@
                 velocities[i * 3 + 1] = (y / r) * speed;
                 velocities[i * 3 + 2] = (z / r) * speed;
 
-                // 2. NEW: Random Color Logic per particle
-                // Assign random R, G, B values between 0.0 and 1.0
-                colors[i * 3] = Math.random();     // Red
-                colors[i * 3 + 1] = Math.random(); // Green
-                colors[i * 3 + 2] = Math.random(); // Blue
+                colors[i * 3] = Math.random();     
+                colors[i * 3 + 1] = Math.random(); 
+                colors[i * 3 + 2] = Math.random(); 
             }
 
-            // Define attributes in geometry
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3)); // NEW: Add color attribute
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3)); 
 
             material = new THREE.PointsMaterial({
                 size: 0.2, 
@@ -195,7 +189,7 @@
                 opacity: 0.9,
                 blending: THREE.AdditiveBlending, 
                 depthWrite: false,
-                vertexColors: true // NEW: Tell material to use the colors array defined above
+                vertexColors: true 
             });
 
             particleSystem = new THREE.Points(geometry, material);
@@ -214,9 +208,8 @@
         function animate3D() {
             requestAnimationFrame(animate3D);
 
-            // CHANGED: Increased these values to make the sphere spin 5x faster
-            particleSystem.rotation.y += 0.005; 
-            particleSystem.rotation.x += 0.0025; 
+            particleSystem.rotation.y += 0.005;
+            particleSystem.rotation.x += 0.0025;
 
             const positions = particleSystem.geometry.attributes.position.array;
 
@@ -225,6 +218,20 @@
                     positions[i * 3] += velocities[i * 3];
                     positions[i * 3 + 1] += velocities[i * 3 + 1];
                     positions[i * 3 + 2] += velocities[i * 3 + 2];
+
+                    // --- UPDATED: NATURAL RESPAWN LOGIC ---
+                    const distSq = positions[i * 3] ** 2 + 
+                                   positions[i * 3 + 1] ** 2 + 
+                                   positions[i * 3 + 2] ** 2;
+
+                    // Push the boundary out a bit further before they respawn
+                    if (distSq > 600) {
+                        // Respawn back at their original spherical position (radius ~6)
+                        // Adding a slight random offset prevents them from forming a hard, repetitive shell
+                        positions[i * 3] = originalPositions[i * 3] + (Math.random() - 0.5) * 2.0;
+                        positions[i * 3 + 1] = originalPositions[i * 3 + 1] + (Math.random() - 0.5) * 2.0;
+                        positions[i * 3 + 2] = originalPositions[i * 3 + 2] + (Math.random() - 0.5) * 2.0;
+                    }
                 }
                 particleSystem.geometry.attributes.position.needsUpdate = true;
             } 
@@ -322,24 +329,18 @@
             // --- AI STATE CONTROL LOGIC ---
             if (highestProb > 0.85) {
                 
-                // 1st Function: Background
                 if (topClass === "Background") {
-                    // NOTE: We no longer set material color here, allowing vertex colors to shine.
-                    
-                    // Only revert if we are currently compressed or actively pulling
                     if (sphereState === 'idle_compressed' || sphereState === 'pulling') {
                         sphereState = 'reverting';
                     }
                 }
 
-                // 2nd Function: Explosion
                 if (topClass === "Explosion") {
                     if (sphereState !== 'exploded') {
                         sphereState = 'exploded';
                     }
                 }
 
-                // 3rd Function: Gravity Pull
                 if (topClass === "Gravity Pull") {
                     if (sphereState !== 'pulling' && sphereState !== 'idle_compressed') {
                         sphereState = 'pulling';
